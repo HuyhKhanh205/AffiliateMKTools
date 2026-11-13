@@ -1,0 +1,13 @@
+# Minimal Supabase CLI config. Settings not listed here use the CLI defaults.
+project_id = "affiliate-hub"
+
+# Public redirect endpoint: anyone clicking a tracked link, no login.
+[functions.go]
+verify_jwt = false
+
+# Called by pg_cron with the x-cron-secret header (checked in code).
+[functions.price-check]
+verify_jwt = false
+
+# ai-content and product-lookup keep verify_jwt = true (default) and also
+# check the user in code.
