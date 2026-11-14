@@ -6,7 +6,7 @@ import { adminClient, corsHeaders, json, requireUser } from '../_shared/http.ts'
 
 const MODEL = 'claude-haiku-5-5';
 const DAILY_LIMIT = Number(Deno.env.get('AI_DAILY_LIMIT') ?? '50');
-const CHANNELS = new Set(['tiktok', 'facebook', 'instagram', 'zalo', 'youtube', 'bio', 'other']);
+const CHANNELS = new Set(['tiktok', 'facebook', 'instagram', 'threads', 'zalo', 'youtube', 'bio', 'other']);
 
 const PLATFORM_NAMES: Record<string, string> = {
   shopee: 'Shopee',
@@ -19,6 +19,7 @@ const CHANNEL_GUIDES: Record<string, string> = {
   tiktok: 'Kịch bản lời thoại/caption cho video TikTok ngắn 15-30 giây: hook mạnh trong 3 giây đầu, câu ngắn, tự nhiên như người thật review. Caption tối đa 150 ký tự. 3-5 hashtag.',
   facebook: 'Bài đăng Facebook: 3-5 đoạn ngắn, kể trải nghiệm/lợi ích cụ thể, có thể dùng emoji vừa phải. 3-5 hashtag.',
   instagram: 'Caption Instagram: 2-4 câu, giàu hình ảnh, emoji vừa phải. 5-8 hashtag.',
+  threads: 'Bài Threads tối đa 400 ký tự, giọng trò chuyện, tối đa 1 hashtag.',
   zalo: 'Tin nhắn Zalo gửi nhóm/bạn bè: thân mật, ngắn gọn 2-4 câu, không dùng hashtag (trả về danh sách rỗng).',
   youtube: 'Mô tả video YouTube Shorts: 2-3 câu nêu lợi ích chính. 3-5 hashtag.',
   bio: 'Mô tả ngắn 1-2 câu cho sản phẩm trên trang bio link. Không hashtag (trả về danh sách rỗng).',

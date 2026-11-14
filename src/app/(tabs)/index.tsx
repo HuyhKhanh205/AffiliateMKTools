@@ -1,138 +1,346 @@
+import { Image } from 'expo-image';
 import { Link } from 'expo-router';
-import { Pressable, Text } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Linking, Switch, Text, View } from 'react-native';
 
-import { BarChart, Card, Empty, ErrorText, H1, H2, Muted, Row, Screen, ShareBars, StatTile, colors } from '@/components/ui';
+import { Button, Card, Chip, CopyButton, ErrorText, Field, H1, H2, Muted, PlatformBadge, Row, Screen, colors } from '@/components/ui';
+import { useAuth } from '@/lib/auth';
+import { parseNumber } from '@/lib/csv';
 import { unwrap, useFocusedQuery } from '@/lib/data';
-import { CHANNEL_LABELS } from '@/lib/links';
-import { PLATFORM_COLORS, PLATFORM_LABELS, formatVnd } from '@/lib/platform';
-import { earningsPerClick, estimateAiCostUsd, lastDays, summarizeClicks, summarizeEarnings } from '@/lib/stats';
-import { supabase } from '@/lib/supabase';
-import { Channel, Conversion, DailyClickRow, Platform, Product } from '@/lib/types';
+import { pickAndUploadProductImage } from '@/lib/images';
+import { PLATFORM_LABELS, detectPlatform, normalizeUrl } from '@/lib/platform';
+import { PROVIDER_LABELS, threadsLength, titleFromUrl } from '@/lib/social';
+import { invokeFunction, supabase } from '@/lib/supabase';
+import { PLATFORMS, Platform, Post, SocialAccount } from '@/lib/types';
 
-async function loadDashboard() {
-  const now = new Date();
-  const since = lastDays(now, 30)[0];
-  const sinceIso = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-  const [clicks, products, conversions, ai] = await Promise.all([
-    supabase.from('daily_clicks').select('*').gte('day', since),
-    supabase.from('products').select('id, title, platform, is_deal'),
-    supabase.from('conversions').select('*').gte('order_date', since),
-    supabase.from('ai_generations').select('input_tokens, output_tokens').gte('created_at', sinceIso),
-  ]);
-  const aiRows = unwrap(ai) as { input_tokens: number; output_tokens: number }[];
-  return {
-    clicks: summarizeClicks(unwrap(clicks) as DailyClickRow[], now),
-    products: unwrap(products) as Pick<Product, 'id' | 'title' | 'platform' | 'is_deal'>[],
-    earnings: summarizeEarnings(unwrap(conversions) as Conversion[]),
-    aiCount: aiRows.length,
-    aiCost: aiRows.reduce((s, r) => s + estimateAiCostUsd(r.input_tokens, r.output_tokens), 0),
-  };
+type AutoProvider = 'threads' | 'instagram';
+type Drafts = Record<'threads' | 'instagram' | 'tiktok', string>;
+interface Result {
+  ok: boolean;
+  message: string;
+  permalink?: string | null;
 }
 
-export default function Dashboard() {
-  const { data, error, loading, refresh } = useFocusedQuery(loadDashboard);
+interface LookupResponse {
+  title?: string;
+  image_url?: string;
+  price?: number;
+  affiliate_url?: string;
+}
 
-  const commission30 = data ? data.earnings.approved + data.earnings.pending : 0;
-  const epc = data ? earningsPerClick(commission30, data.clicks.last30) : null;
-  const productById = new Map((data?.products ?? []).map((p) => [p.id, p]));
-  const deals = data?.products.filter((p) => p.is_deal).length ?? 0;
-  const bestChannel = data
-    ? (Object.entries(data.clicks.byChannel) as [Channel, number][]).sort((a, b) => b[1] - a[1])[0]
-    : undefined;
+export default function PostScreen() {
+  const { session } = useAuth();
+  const userId = session?.user.id ?? '';
+  const { data, refresh } = useFocusedQuery(async () => {
+    const [accounts, posts] = await Promise.all([
+      supabase.from('social_accounts').select('*'),
+      supabase.from('posts').select('*').order('created_at', { ascending: false }).limit(10),
+    ]);
+    return { accounts: unwrap(accounts) as SocialAccount[], posts: unwrap(posts) as Post[] };
+  }, userId);
+  const connected = new Map((data?.accounts ?? []).map((a) => [a.provider, a]));
+
+  // Step 1: product
+  const [url, setUrl] = useState('');
+  const [platform, setPlatform] = useState<Platform | null>(null);
+  const [title, setTitle] = useState('');
+  const [price, setPrice] = useState('');
+  const [notes, setNotes] = useState('');
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [lookupState, setLookupState] = useState<'idle' | 'loading' | 'done'>('idle');
+  const [uploading, setUploading] = useState(false);
+  const lookupFor = useRef('');
+
+  // Step 2-3: drafts and publishing
+  const [productId, setProductId] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<Drafts | null>(null);
+  const [source, setSource] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Record<AutoProvider, boolean>>({ threads: true, instagram: true });
+  const [results, setResults] = useState<Partial<Record<AutoProvider, Result>>>({});
+  const [busy, setBusy] = useState<'compose' | 'publish' | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // Read the pasted link once it looks valid: platform, guessed name, preview image.
+  useEffect(() => {
+    const normalized = normalizeUrl(url);
+    const detected = normalized ? detectPlatform(normalized) : null;
+    if (!normalized || !detected || lookupFor.current === normalized) return;
+    const timer = setTimeout(async () => {
+      lookupFor.current = normalized;
+      setPlatform(detected);
+      setTitle((t) => t || titleFromUrl(normalized) || '');
+      setLookupState('loading');
+      try {
+        const res = await invokeFunction<LookupResponse>('product-lookup', { url: normalized, platform: detected });
+        if (res.title) setTitle((t) => (t && t !== titleFromUrl(normalized) ? t : res.title!));
+        if (res.image_url) setImageUrl((img) => img ?? res.image_url!);
+        if (res.price) setPrice((p) => p || String(res.price));
+      } catch {
+        // lookup is best-effort; the user can type the name
+      } finally {
+        setLookupState('done');
+      }
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [url]);
+
+  function reset() {
+    setUrl('');
+    setPlatform(null);
+    setTitle('');
+    setPrice('');
+    setNotes('');
+    setImageUrl(null);
+    setLookupState('idle');
+    lookupFor.current = '';
+    setProductId(null);
+    setDrafts(null);
+    setSource(null);
+    setResults({});
+    setError(null);
+  }
+
+  async function chooseImage() {
+    setError(null);
+    setUploading(true);
+    try {
+      const uploaded = await pickAndUploadProductImage(userId);
+      if (uploaded) setImageUrl(uploaded);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function compose() {
+    setError(null);
+    const link = normalizeUrl(url);
+    if (!link) return setError('Dán link sản phẩm (link affiliate) trước.');
+    if (!platform) return setError('Chọn sàn của sản phẩm.');
+    if (!title.trim()) return setError('Nhập tên sản phẩm.');
+    setBusy('compose');
+    try {
+      let id = productId;
+      const fields = { platform, title: title.trim(), original_url: link, affiliate_url: link, image_url: imageUrl };
+      if (id) {
+        const { error: e } = await supabase.from('products').update(fields).eq('id', id);
+        if (e) throw new Error(e.message);
+      } else {
+        const { data: created, error: e } = await supabase.from('products').insert(fields).select('id').single();
+        if (e || !created) throw new Error(e?.message ?? 'Không lưu được sản phẩm.');
+        id = created.id;
+        setProductId(id);
+      }
+      if (price) await supabase.from('price_history').insert({ product_id: id, price: parseNumber(price) });
+
+      const res = await invokeFunction<{ drafts: Drafts; source: string; aiNote: string | null }>('compose-post', {
+        product_id: id,
+        notes: notes.trim() || undefined,
+      });
+      setDrafts(res.drafts);
+      setSource(res.aiNote ?? (res.source === 'ai' ? 'Viết bằng AI' : 'Viết từ mẫu có sẵn (miễn phí)'));
+      setResults({});
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const canPost = (p: AutoProvider) => connected.has(p) && (p !== 'instagram' || Boolean(imageUrl));
+  const targets = (['threads', 'instagram'] as AutoProvider[]).filter((p) => selected[p] && canPost(p) && !results[p]?.ok);
+
+  async function publishAll() {
+    if (!drafts) return;
+    setBusy('publish');
+    for (const provider of targets) {
+      try {
+        const res = await invokeFunction<{ permalink: string | null }>('publish', {
+          provider,
+          text: drafts[provider],
+          image_url: imageUrl,
+          product_id: productId,
+        });
+        setResults((r) => ({ ...r, [provider]: { ok: true, message: 'Đã đăng ✓', permalink: res.permalink } }));
+      } catch (e) {
+        setResults((r) => ({ ...r, [provider]: { ok: false, message: e instanceof Error ? e.message : String(e) } }));
+      }
+    }
+    setBusy(null);
+    refresh();
+  }
+
+  const noConnections = data && data.accounts.length === 0;
 
   return (
-    <Screen refreshing={loading} onRefresh={refresh}>
-      <H1>Tổng quan</H1>
-      <ErrorText message={error} />
+    <Screen>
+      <H1>Đăng bài</H1>
+      <Muted>Dán link sản phẩm → app viết bài → bấm Đăng. Thế thôi.</Muted>
 
-      {data && data.products.length === 0 ? (
-        <Empty title="Bắt đầu nào 👋">
-          <Muted style={{ textAlign: 'center' }}>Thêm sản phẩm đầu tiên, copy link theo dõi rồi dán vào TikTok/Facebook/bio.</Muted>
-          <Link href="/product/new" style={{ color: colors.primary, fontWeight: '600' }}>
-            + Thêm sản phẩm
-          </Link>
-        </Empty>
-      ) : null}
-
-      <Row style={{ flexWrap: 'wrap' }}>
-        <StatTile label="Click hôm nay" value={String(data?.clicks.today ?? '–')} />
-        <StatTile label="Click 7 ngày" value={String(data?.clicks.last7 ?? '–')} />
-        <StatTile label="Hoa hồng 30 ngày" value={formatVnd(commission30)} sub={data ? `${data.earnings.orders} đơn` : undefined} />
-        <StatTile label="Thu nhập / click" value={epc === null ? '–' : formatVnd(epc)} sub="EPC 30 ngày" />
-      </Row>
-
-      <Card>
-        <H2>Click 14 ngày qua</H2>
-        <BarChart data={(data?.clicks.series ?? []).map((d) => ({ label: d.day.slice(5).split('-').reverse().join('/'), value: d.clicks }))} />
-        <Muted>Tổng 30 ngày: {data?.clicks.last30 ?? 0} click</Muted>
-      </Card>
-
-      {bestChannel || deals > 0 ? (
+      {noConnections ? (
         <Card style={{ backgroundColor: colors.primarySoft }}>
-          <H2>Gợi ý</H2>
-          {bestChannel ? (
-            <Text>
-              Kênh mang nhiều click nhất là <Text style={{ fontWeight: '700' }}>{CHANNEL_LABELS[bestChannel[0]]}</Text> — ưu tiên đăng
-              nội dung ở đây.
-            </Text>
-          ) : null}
-          {deals > 0 ? (
-            <Text>
-              Có <Text style={{ fontWeight: '700' }}>{deals} sản phẩm đang giảm giá</Text> — đăng ngay khi deal còn hot (tab Deal).
-            </Text>
-          ) : null}
+          <Text>
+            Chưa kết nối Threads / Instagram nên chưa đăng tự động được. Bạn vẫn tạo bài và copy để tự đăng.{' '}
+            <Link href="/settings" style={{ color: colors.primary, fontWeight: '700' }}>
+              Kết nối ngay →
+            </Link>
+          </Text>
         </Card>
       ) : null}
 
       <Card>
-        <H2>Theo sàn</H2>
-        {data && Object.keys(data.clicks.byPlatform).length ? (
-          <ShareBars
-            items={(Object.entries(data.clicks.byPlatform) as [Platform, number][]).map(([p, v]) => ({
-              label: PLATFORM_LABELS[p],
-              value: v,
-              color: PLATFORM_COLORS[p],
-            }))}
-          />
-        ) : (
-          <Muted>Chưa có click.</Muted>
-        )}
+        <H2>1. Sản phẩm</H2>
+        <Field
+          label="Link sản phẩm"
+          value={url}
+          onChangeText={(t) => {
+            setUrl(t);
+            if (!t) reset();
+          }}
+          autoCapitalize="none"
+          keyboardType="url"
+          placeholder="Dán link affiliate Shopee / Lazada / Tiki / TikTok"
+          hint="Trong app Shopee/Lazada/TikTok: mở sản phẩm → Chia sẻ → Lấy link (link affiliate) → dán vào đây."
+        />
+        {platform ? (
+          <Row>
+            <PlatformBadge platform={platform} />
+            <Muted style={{ fontSize: 12 }}>{lookupState === 'loading' ? 'Đang đọc link…' : 'Đã nhận link ✓'}</Muted>
+          </Row>
+        ) : url ? (
+          <Row style={{ flexWrap: 'wrap' }}>
+            {PLATFORMS.map((p) => (
+              <Chip key={p} label={PLATFORM_LABELS[p]} active={platform === p} onPress={() => setPlatform(p)} />
+            ))}
+          </Row>
+        ) : null}
+        <Field label="Tên sản phẩm" value={title} onChangeText={setTitle} placeholder="VD: Tai nghe Bluetooth chống ồn" />
+        <Field label="Giá (tuỳ chọn)" value={price} onChangeText={setPrice} keyboardType="numeric" placeholder="VD: 349000" />
+        <Row style={{ alignItems: 'center' }}>
+          {imageUrl ? (
+            <Image source={{ uri: imageUrl }} style={{ width: 72, height: 72, borderRadius: 10, backgroundColor: colors.bg }} contentFit="cover" />
+          ) : null}
+          <View style={{ flex: 1, gap: 4 }}>
+            <Button small variant="secondary" title={imageUrl ? '📷 Đổi ảnh' : '📷 Chọn ảnh sản phẩm'} onPress={chooseImage} loading={uploading} />
+            <Muted style={{ fontSize: 12 }}>Instagram bắt buộc có ảnh. Ảnh chụp thật thường được tương tác tốt hơn.</Muted>
+          </View>
+        </Row>
+        <Field
+          label="Điểm nổi bật (tuỳ chọn)"
+          value={notes}
+          onChangeText={setNotes}
+          multiline
+          placeholder="VD: pin trâu, đeo cả ngày không đau tai, đang có voucher..."
+        />
+        <Button title={drafts ? '✨ Viết lại bài' : '✨ Tạo bài viết'} onPress={compose} loading={busy === 'compose'} />
       </Card>
 
-      <Card>
-        <H2>Theo kênh</H2>
-        {data && Object.keys(data.clicks.byChannel).length ? (
-          <ShareBars
-            items={(Object.entries(data.clicks.byChannel) as [Channel, number][]).map(([c, v]) => ({ label: CHANNEL_LABELS[c], value: v }))}
-          />
-        ) : (
-          <Muted>Chưa có click.</Muted>
-        )}
-      </Card>
+      <ErrorText message={error} />
 
-      <Card>
-        <H2>Top sản phẩm (30 ngày)</H2>
-        {data?.clicks.topProducts.length ? (
-          data.clicks.topProducts.map((t, i) => (
-            <Link key={t.productId} href={{ pathname: '/product/[id]', params: { id: t.productId } }} asChild>
-              <Pressable>
+      {drafts ? (
+        <Card>
+          <H2>2. Bài viết</H2>
+          {source ? <Muted style={{ fontSize: 12 }}>{source}. Bạn có thể sửa trước khi đăng.</Muted> : null}
+
+          {(['threads', 'instagram'] as AutoProvider[]).map((p) => {
+            const account = connected.get(p);
+            const result = results[p];
+            const length = p === 'threads' ? threadsLength(drafts.threads) : drafts.instagram.length;
+            const limit = p === 'threads' ? 500 : 2200;
+            return (
+              <View key={p} style={{ gap: 6, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10 }}>
                 <Row style={{ justifyContent: 'space-between' }}>
-                  <Text style={{ flex: 1 }} numberOfLines={1}>
-                    {i + 1}. {productById.get(t.productId)?.title ?? 'Sản phẩm đã xoá'}
+                  <Text style={{ fontWeight: '700' }}>
+                    {PROVIDER_LABELS[p]} {account?.username ? <Text style={{ color: colors.muted }}>@{account.username}</Text> : null}
                   </Text>
-                  <Text style={{ fontWeight: '600' }}>{t.clicks} click</Text>
+                  {canPost(p) ? (
+                    <Switch value={selected[p]} onValueChange={(v) => setSelected((s) => ({ ...s, [p]: v }))} />
+                  ) : (
+                    <Link href="/settings" style={{ color: colors.primary, fontSize: 13 }}>
+                      {account ? 'Cần ảnh để đăng' : 'Chưa kết nối →'}
+                    </Link>
+                  )}
                 </Row>
-              </Pressable>
-            </Link>
-          ))
-        ) : (
-          <Muted>Chưa có dữ liệu.</Muted>
-        )}
-      </Card>
+                <Field
+                  label={`Nội dung (${length}/${limit})`}
+                  value={drafts[p]}
+                  onChangeText={(t) => setDrafts((d) => (d ? { ...d, [p]: t } : d))}
+                  multiline
+                  style={{ minHeight: p === 'threads' ? 230 : 260 }}
+                />
+                <Row style={{ justifyContent: 'space-between' }}>
+                  <CopyButton text={drafts[p]} />
+                  {result ? (
+                    <Text style={{ color: result.ok ? colors.success : colors.danger, flex: 1, textAlign: 'right' }}>
+                      {result.message}
+                      {result.permalink ? (
+                        <Text style={{ color: colors.primary }} onPress={() => Linking.openURL(result.permalink!)}>
+                          {'  '}Xem bài ↗
+                        </Text>
+                      ) : null}
+                    </Text>
+                  ) : null}
+                </Row>
+              </View>
+            );
+          })}
 
-      <Muted style={{ textAlign: 'center', fontSize: 12 }}>
-        AI 30 ngày: {data?.aiCount ?? 0} lần · ước tính ${(data?.aiCost ?? 0).toFixed(4)}
-      </Muted>
+          <View style={{ gap: 6, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10 }}>
+            <Text style={{ fontWeight: '700' }}>TikTok (copy để tự đăng)</Text>
+            <Field
+              label="Caption"
+              value={drafts.tiktok}
+              onChangeText={(t) => setDrafts((d) => (d ? { ...d, tiktok: t } : d))}
+              multiline
+              style={{ minHeight: 150 }}
+            />
+            <Row>
+              <CopyButton text={drafts.tiktok} />
+              <Muted style={{ fontSize: 12, flex: 1 }}>Đăng tự động lên TikTok sẽ có ở bản sau.</Muted>
+            </Row>
+          </View>
+        </Card>
+      ) : null}
+
+      {drafts ? (
+        <Card>
+          <H2>3. Đăng</H2>
+          <Button
+            title={targets.length ? `🚀 Đăng lên ${targets.map((p) => PROVIDER_LABELS[p]).join(' + ')}` : 'Chọn kênh đã kết nối để đăng'}
+            onPress={publishAll}
+            loading={busy === 'publish'}
+            disabled={targets.length === 0}
+          />
+          <Button variant="secondary" title="+ Đăng sản phẩm khác" onPress={reset} />
+        </Card>
+      ) : null}
+
+      {data?.posts.length ? (
+        <Card>
+          <H2>Bài đã đăng gần đây</H2>
+          {data.posts.map((p) => (
+            <Row key={p.id} style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <View style={{ flex: 1 }}>
+                <Text numberOfLines={1}>{p.text.split('\n')[0]}</Text>
+                <Muted style={{ fontSize: 12 }}>
+                  {PROVIDER_LABELS[p.provider]} · {new Date(p.created_at).toLocaleString('vi-VN')}
+                  {p.error ? ` · ${p.error}` : ''}
+                </Muted>
+              </View>
+              {p.permalink ? (
+                <Text style={{ color: colors.primary }} onPress={() => Linking.openURL(p.permalink!)}>
+                  Xem ↗
+                </Text>
+              ) : (
+                <Text style={{ color: p.status === 'failed' ? colors.danger : colors.muted }}>
+                  {p.status === 'failed' ? 'Lỗi' : p.status === 'published' ? 'Đã đăng' : 'Đang đăng'}
+                </Text>
+              )}
+            </Row>
+          ))}
+        </Card>
+      ) : null}
     </Screen>
   );
 }

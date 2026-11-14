@@ -2,6 +2,7 @@ import { Link } from 'expo-router';
 import { useState } from 'react';
 import { Platform, Text } from 'react-native';
 
+import { SocialConnections } from '@/components/SocialConnections';
 import { Button, Card, CopyButton, ErrorText, Field, H1, H2, Muted, Row, Screen, colors } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import { unwrap, useFocusedQuery } from '@/lib/data';
@@ -23,6 +24,8 @@ export default function Settings() {
   return (
     <Screen>
       <H1>Cài đặt</H1>
+
+      <SocialConnections userId={userId} bioUrl={bioUrl} />
 
       <Card>
         <H2>Trang bio của bạn</H2>
@@ -54,7 +57,7 @@ export default function Settings() {
         <Muted>
           • Supabase gói Free: 0đ (project bị tạm dừng nếu 7 ngày không ai truy cập).{'\n'}• AI: Claude Haiku 5.5, ${AI_PRICE_PER_MTOK.input}
           /${AI_PRICE_PER_MTOK.output} mỗi 1 triệu token vào/ra — khoảng 0,0005$ một caption. Giới hạn mặc định 50 lần/ngày.{'\n'}• Web + trang
-          bio: Cloudflare Pages / Netlify gói free.
+          bio: GitHub Pages, miễn phí.{'\n'}• Đăng Threads/Instagram: API chính thức của Meta, miễn phí.
         </Muted>
       </Card>
 

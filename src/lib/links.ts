@@ -4,6 +4,7 @@ export const CHANNEL_LABELS: Record<Channel, string> = {
   tiktok: 'TikTok',
   facebook: 'Facebook',
   instagram: 'Instagram',
+  threads: 'Threads',
   zalo: 'Zalo',
   youtube: 'YouTube',
   bio: 'Trang bio',

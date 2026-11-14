@@ -49,8 +49,12 @@ export default function NewProduct() {
     setLookingUp(true);
     try {
       const res = await invokeFunction<LookupResponse>('product-lookup', { url, platform });
+      if (res.title && !title) setTitle(res.title);
+      if (res.image_url && !imageUrl) setImageUrl(res.image_url);
       if (!res.configured) {
-        setNote(`Chưa cấu hình API cho ${PLATFORM_LABELS[platform]}. Hãy tạo link affiliate trên trang của sàn rồi dán vào ô bên dưới.`);
+        setNote(
+          `Đã đoán tên sản phẩm từ link. Chưa có API ${PLATFORM_LABELS[platform]} nên không tự tạo được link affiliate: nếu link trên đã là link affiliate thì để trống ô bên dưới.`,
+        );
         return;
       }
       if (res.affiliate_url) setAffiliateUrl(res.affiliate_url);

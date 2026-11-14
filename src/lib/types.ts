@@ -1,7 +1,7 @@
 export const PLATFORMS = ['shopee', 'lazada', 'tiki', 'tiktok'] as const;
 export type Platform = (typeof PLATFORMS)[number];
 
-export const CHANNELS = ['tiktok', 'facebook', 'instagram', 'zalo', 'youtube', 'bio', 'other'] as const;
+export const CHANNELS = ['tiktok', 'facebook', 'instagram', 'threads', 'zalo', 'youtube', 'bio', 'other'] as const;
 export type Channel = (typeof CHANNELS)[number];
 
 export type ConversionStatus = 'pending' | 'approved' | 'rejected';
@@ -70,4 +70,26 @@ export interface AiContent {
   caption: string;
   hashtags: string[];
   cta: string;
+}
+
+export type SocialProvider = 'threads' | 'instagram' | 'tiktok';
+
+export interface SocialAccount {
+  provider: SocialProvider;
+  account_id: string;
+  username: string | null;
+  expires_at: string | null;
+  connected_at: string;
+}
+
+export interface Post {
+  id: string;
+  product_id: string | null;
+  provider: SocialProvider;
+  text: string;
+  image_url: string | null;
+  status: 'publishing' | 'published' | 'failed';
+  permalink: string | null;
+  error: string | null;
+  created_at: string;
 }

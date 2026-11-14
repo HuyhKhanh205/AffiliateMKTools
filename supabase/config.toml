@@ -11,3 +11,11 @@ verify_jwt = false
 
 # ai-content and product-lookup keep verify_jwt = true (default) and also
 # check the user in code.
+
+# Meta redirects the browser here after login (no JWT); start/disconnect check the user in code.
+[functions.social-oauth]
+verify_jwt = false
+
+# Weekly cron with the x-cron-secret header (checked in code).
+[functions.refresh-social-tokens]
+verify_jwt = false

@@ -4,6 +4,7 @@ App làm affiliate cho **Shopee, Lazada, Tiki, TikTok Shop** với chi phí gầ
 
 | Tính năng | Bạn nhận được |
 |---|---|
+| **Đăng bài tự động** | Dán link sản phẩm → app tự đoán tên, viết bài cho Threads / Instagram / TikTok (AI hoặc mẫu miễn phí) → xem lại → bấm **Đăng** lên Threads và Instagram. TikTok: copy caption (tự động ở bản sau). |
 | **Link theo dõi** | Mỗi sản phẩm có một link ngắn riêng cho từng kênh (TikTok, Facebook, Zalo, bio...). Mỗi click được đếm trước khi chuyển người xem sang link affiliate. |
 | **Dashboard** | Click hôm nay / 7 / 30 ngày, biểu đồ 14 ngày, tỉ lệ theo sàn và theo kênh, top sản phẩm, hoa hồng, **thu nhập trên mỗi click (EPC)**. |
 | **Trang bio** | `/u/<handle>`: một trang công khai liệt kê sản phẩm, để dán vào bio TikTok/Instagram/Facebook. Sản phẩm đang giảm giá được đưa lên đầu. |
@@ -50,7 +51,8 @@ supabase/functions  go, ai-content, product-lookup, price-check (+ _shared/provi
 | Thành phần | Trạng thái |
 |---|---|
 | Supabase project `ujaqushxozsnjpojalen` (Sydney) | Migration `20261113000000_init` đã chạy; xác nhận email đã tắt (đăng ký là dùng được ngay) |
-| Edge Functions | `go`, `price-check` (không cần JWT); `ai-content`, `product-lookup` (cần đăng nhập) — đều ACTIVE |
+| Edge Functions | `go`, `price-check`, `social-oauth`, `refresh-social-tokens` (không cần JWT); `ai-content`, `product-lookup`, `compose-post`, `publish` (cần đăng nhập) — đều ACTIVE |
+| Đăng bài tự động | Đã chạy phía server. **Cần bạn tạo app Meta một lần** (mục bên dưới) rồi bấm Kết nối trong Cài đặt |
 | Cron `daily-price-check` | 01:00 UTC (08:00 giờ VN) mỗi ngày; secret `CRON_SECRET` đã đặt |
 | Test đầu-cuối trên project thật | 14/14 PASS: đăng ký, trigger, link, redirect 302, đếm click (bỏ qua bot), trang bio cho khách, RLS |
 | `ANTHROPIC_API_KEY` | **Chưa có** — thêm ở Dashboard → Edge Functions → Secrets thì nút "Viết caption" mới chạy |
@@ -63,6 +65,40 @@ supabase/functions  go, ai-content, product-lookup, price-check (+ _shared/provi
 - Trang bio công khai: `https://huyhkhanh205.github.io/AffiliateMKTools/u/<handle>`.
 
 Chạy bản phát triển ở máy: tạo `.env.local` theo `.env.example`, điền URL `https://ujaqushxozsnjpojalen.supabase.co` và *Publishable key* (Dashboard → Project Settings → API Keys), rồi `npx expo start`.
+
+## Kết nối Threads / Instagram để đăng tự động (làm một lần, ~15 phút)
+
+App chỉ dùng **API chính thức** của Meta, miễn phí. Vì chỉ mình bạn dùng, app Meta để ở chế độ phát triển, **không cần Meta xét duyệt**. Bạn chỉ cần thêm chính mình làm "tester".
+
+**Giới hạn cần biết:**
+- Threads đăng được chữ, ảnh và link bấm được.
+- Instagram **bắt buộc có ảnh** và link trong caption không bấm được, nên app ghi "link ở bio".
+- Facebook trang cá nhân/nhóm và Zalo cá nhân không có API đăng bài.
+
+1. **Instagram → tài khoản Chuyên nghiệp:** trong app Instagram vào Cài đặt → Loại tài khoản và công cụ → Chuyển sang tài khoản chuyên nghiệp (Creator hoặc Business). Miễn phí, không cần Fanpage.
+2. **Tạo app** ở <https://developers.facebook.com/apps> → Create app. Chọn use case:
+   - **Access the Threads API**;
+   - **Manage messaging & content on Instagram** (Instagram API with Instagram login).
+3. **Redirect URI.** Dán đúng địa chỉ này vào cả hai chỗ:
+   ```
+   https://ujaqushxozsnjpojalen.supabase.co/functions/v1/social-oauth/callback
+   ```
+   - Threads: use case Threads → Settings → *Redirect Callback URLs*.
+   - Instagram: Instagram → API setup with Instagram login → *Set up Instagram business login* → *OAuth redirect URIs*.
+4. **Quyền:**
+   - Threads: bật `threads_basic` và `threads_content_publish`.
+   - Instagram: bật `instagram_business_basic` và `instagram_business_content_publish`.
+5. **Thêm bạn làm tester:** App roles → Roles → thêm tài khoản Threads của bạn (Threads Tester) và tài khoản Instagram (Instagram Tester). Sau đó **chấp nhận lời mời**:
+   - Threads: Cài đặt → Tài khoản → Quyền truy cập trang web → Lời mời;
+   - Instagram: Cài đặt → Ứng dụng và trang web → Lời mời tester.
+6. **Lấy ID/secret, dán vào Supabase.** Vào Dashboard → Edge Functions → **Secrets** (không dán vào chat hay vào code):
+   - `THREADS_APP_ID`, `THREADS_APP_SECRET`: App settings → Basic → *Threads App ID / Threads App secret*;
+   - `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET`: Instagram → API setup with Instagram login → *Instagram App ID / Instagram app secret*.
+7. Mở app → **Cài đặt → Kết nối kênh** → bấm **Kết nối** từng kênh → đăng nhập → Cho phép. Thấy "@tên ✓" là xong.
+
+Token tự gia hạn mỗi tuần (cron `weekly-refresh-social-tokens`). Mỗi kênh app giới hạn 25 bài/ngày (`DAILY_POST_LIMIT`) để tránh bị coi là spam.
+
+**Đăng bài:** tab **Đăng bài** → dán link affiliate (trong app Shopee/Lazada/TikTok: Chia sẻ → Lấy link) → **Chọn ảnh** → **Tạo bài viết** → sửa nếu muốn → **Đăng**.
 
 ## Cài đặt từng bước
 

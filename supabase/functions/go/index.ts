@@ -4,7 +4,7 @@ import { adminClient } from '../_shared/http.ts';
 
 declare const EdgeRuntime: { waitUntil(promise: PromiseLike<unknown>): void } | undefined;
 
-const CHANNELS = new Set(['tiktok', 'facebook', 'instagram', 'zalo', 'youtube', 'bio', 'other']);
+const CHANNELS = new Set(['tiktok', 'facebook', 'instagram', 'threads', 'zalo', 'youtube', 'bio', 'other']);
 // Link-preview crawlers (Facebook, Zalo, Telegram...) fetch the URL when a link
 // is pasted; counting them would inflate clicks.
 const BOT_UA = /bot|crawler|spider|preview|facebookexternalhit|zalo.*(crawler|bot)|whatsapp|telegram|slackbot|discord|curl|wget|python-requests/i;

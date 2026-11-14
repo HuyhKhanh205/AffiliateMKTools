@@ -11,7 +11,8 @@ const icon = (emoji: string) =>
 export default function TabLayout() {
   return (
     <Tabs screenOptions={{ headerShown: false, tabBarActiveTintColor: colors.primary }}>
-      <Tabs.Screen name="index" options={{ title: 'Tổng quan', tabBarIcon: icon('📊') }} />
+      <Tabs.Screen name="index" options={{ title: 'Đăng bài', tabBarIcon: icon('🚀') }} />
+      <Tabs.Screen name="stats" options={{ title: 'Thống kê', tabBarIcon: icon('📊') }} />
       <Tabs.Screen name="products" options={{ title: 'Sản phẩm', tabBarIcon: icon('🛍️') }} />
       <Tabs.Screen name="deals" options={{ title: 'Deal', tabBarIcon: icon('🔥') }} />
       <Tabs.Screen name="earnings" options={{ title: 'Hoa hồng', tabBarIcon: icon('💰') }} />
