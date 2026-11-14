@@ -45,6 +45,19 @@ supabase/migrations bảng, RLS, trigger, view daily_clicks, hàm get_bio
 supabase/functions  go, ai-content, product-lookup, price-check (+ _shared/providers cho Shopee, AccessTrade)
 ```
 
+## Trạng thái deploy (14/11/2026)
+
+| Thành phần | Trạng thái |
+|---|---|
+| Supabase project `ujaqushxozsnjpojalen` (Sydney) | Migration `20261113000000_init` đã chạy; xác nhận email đã tắt (đăng ký là dùng được ngay) |
+| Edge Functions | `go`, `price-check` (không cần JWT); `ai-content`, `product-lookup` (cần đăng nhập) — đều ACTIVE |
+| Cron `daily-price-check` | 01:00 UTC (08:00 giờ VN) mỗi ngày; secret `CRON_SECRET` đã đặt |
+| Test đầu-cuối trên project thật | 14/14 PASS: đăng ký, trigger, link, redirect 302, đếm click (bỏ qua bot), trang bio cho khách, RLS |
+| `ANTHROPIC_API_KEY` | **Chưa có** — thêm ở Dashboard → Edge Functions → Secrets thì nút "Viết caption" mới chạy |
+| Web (Cloudflare Pages) | **Chưa deploy** — cần Cloudflare API Token quyền *Cloudflare Pages: Edit* |
+
+Chạy app với project này: tạo `.env.local` theo `.env.example`, điền URL `https://ujaqushxozsnjpojalen.supabase.co` và *Publishable key* (Dashboard → Project Settings → API Keys), rồi `npx expo start`.
+
 ## Cài đặt từng bước
 
 ### 1. Chạy app ở máy

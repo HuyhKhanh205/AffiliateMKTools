@@ -48,7 +48,9 @@ const OUTPUT_SCHEMA = {
   additionalProperties: false,
 };
 
-const anthropic = new Anthropic({ apiKey: Deno.env.get('ANTHROPIC_API_KEY') });
+// Created on first use: the SDK throws at construction when the key is missing,
+// which would crash the function at boot instead of returning a clear error.
+let anthropic: Anthropic | null = null;
 const admin = adminClient();
 
 Deno.serve(async (req) => {
@@ -57,6 +59,12 @@ Deno.serve(async (req) => {
 
   const user = await requireUser(req, admin);
   if (!user) return json({ error: 'Bạn cần đăng nhập.' }, 401);
+
+  const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
+  if (!apiKey) {
+    return json({ error: 'Chưa cấu hình ANTHROPIC_API_KEY (Supabase → Edge Functions → Secrets).' }, 503);
+  }
+  anthropic ??= new Anthropic({ apiKey });
 
   let body: { product_id?: string; channel?: string; tone?: string; notes?: string };
   try {
