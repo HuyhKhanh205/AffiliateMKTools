@@ -1,0 +1,13 @@
+{
+  "short_name": "Affiliate Hub",
+  "name": "Affiliate Hub — quản lý affiliate Shopee, Lazada, Tiki, TikTok Shop",
+  "icons": [
+    { "src": "%BASE_URL%/logo192.png", "type": "image/png", "sizes": "192x192" },
+    { "src": "%BASE_URL%/logo512.png", "type": "image/png", "sizes": "512x512" }
+  ],
+  "start_url": "%BASE_URL%/",
+  "scope": "%BASE_URL%/",
+  "display": "standalone",
+  "theme_color": "#EE4D2D",
+  "background_color": "#F5F6FA"
+}

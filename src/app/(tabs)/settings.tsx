@@ -43,9 +43,9 @@ export default function Settings() {
         ) : (
           <Muted>Đặt handle bên dưới để có trang bio.</Muted>
         )}
-        {/* Re-mount the form when the saved profile changes so its fields start from the stored values. */}
+        {/* Fields start from the stored profile; keyed by user so saving does not reset the form (and its "saved" message). */}
         {profile ? (
-          <ProfileForm key={`${profile.handle}|${profile.display_name}|${profile.bio}`} profile={profile} onSaved={refresh} />
+          <ProfileForm key={profile.id} profile={profile} onSaved={refresh} />
         ) : null}
       </Card>
 

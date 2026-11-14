@@ -54,9 +54,15 @@ supabase/functions  go, ai-content, product-lookup, price-check (+ _shared/provi
 | Cron `daily-price-check` | 01:00 UTC (08:00 giờ VN) mỗi ngày; secret `CRON_SECRET` đã đặt |
 | Test đầu-cuối trên project thật | 14/14 PASS: đăng ký, trigger, link, redirect 302, đếm click (bỏ qua bot), trang bio cho khách, RLS |
 | `ANTHROPIC_API_KEY` | **Chưa có** — thêm ở Dashboard → Edge Functions → Secrets thì nút "Viết caption" mới chạy |
-| Web (Cloudflare Pages) | **Chưa deploy** — cần Cloudflare API Token quyền *Cloudflare Pages: Edit* |
+| Web (GitHub Pages) | <https://huyhkhanh205.github.io/AffiliateMKTools> — tự build lại mỗi lần push (`.github/workflows/deploy-web.yml`). Lần đầu cần bật Settings → Pages → Source: **GitHub Actions** |
 
-Chạy app với project này: tạo `.env.local` theo `.env.example`, điền URL `https://ujaqushxozsnjpojalen.supabase.co` và *Publishable key* (Dashboard → Project Settings → API Keys), rồi `npx expo start`.
+### Mở app (không cần cài gì)
+
+- **Laptop:** mở <https://huyhkhanh205.github.io/AffiliateMKTools> bằng Chrome/Edge. Muốn có icon như app: Chrome → menu ⋮ → *Truyền, lưu và chia sẻ* → *Cài đặt trang dưới dạng ứng dụng* (Edge: … → *Ứng dụng* → *Cài đặt trang web này*).
+- **iPhone:** mở link bằng **Safari** → nút Chia sẻ → **Thêm vào Màn hình chính**. Icon Affiliate Hub xuất hiện, bấm là mở toàn màn hình như app.
+- Trang bio công khai: `https://huyhkhanh205.github.io/AffiliateMKTools/u/<handle>`.
+
+Chạy bản phát triển ở máy: tạo `.env.local` theo `.env.example`, điền URL `https://ujaqushxozsnjpojalen.supabase.co` và *Publishable key* (Dashboard → Project Settings → API Keys), rồi `npx expo start`.
 
 ## Cài đặt từng bước
 
